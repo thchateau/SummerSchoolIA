@@ -5,11 +5,10 @@ Regroupe les deux ateliers etudiants dans une seule interface :
   - Atelier Raman : Classification binaire de spectres Raman (PyTorch)
   - Atelier YOLO  : Fine-tuning d'un detecteur d'objets YOLO11
 
-Chaque atelier est execute dans son dossier d'origine (students_ramen/
-ou students_yolo/) afin de preserver l'acces a ses donnees, sans
-modifier les scripts existants.
+Chaque atelier est execute en deleguant a son script Streamlit d'origine,
+sans le modifier. Compatible Streamlit Community Cloud.
 
-Lancement :
+Lancement local :
     streamlit run app_ateliers.py
 """
 
@@ -17,8 +16,6 @@ from __future__ import annotations
 
 import os
 import runpy
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -37,10 +34,26 @@ st.set_page_config(
 ROOT = Path(__file__).resolve().parent
 RAMAN_DIR = ROOT / "students_ramen"
 RAMAN_APP = RAMAN_DIR / "app_raman_classification.py"
-RAMAN_NOTEBOOK = RAMAN_DIR / "Raman_Classification_Binaire.ipynb"
 YOLO_DIR = ROOT / "students_yolo"
 YOLO_APP = YOLO_DIR / "app.py"
-YOLO_NOTEBOOK = YOLO_DIR / "yolo_atelier_fr.ipynb"
+
+# Liens Google Colab vers les notebooks Jupyter associes a chaque atelier.
+# Colab ouvre directement les .ipynb hebergés sur GitHub.
+GITHUB_REPO = "thchateau/SummerSchoolIA"
+GITHUB_BRANCH = "main"
+RAMAN_NOTEBOOK_REL = "students_ramen/Raman_Classification_Binaire.ipynb"
+YOLO_NOTEBOOK_REL = "students_yolo/yolo_atelier_fr.ipynb"
+
+
+def colab_url(notebook_rel_path: str) -> str:
+    return (
+        f"https://colab.research.google.com/github/"
+        f"{GITHUB_REPO}/blob/{GITHUB_BRANCH}/{notebook_rel_path}"
+    )
+
+
+def github_url(notebook_rel_path: str) -> str:
+    return f"https://github.com/{GITHUB_REPO}/blob/{GITHUB_BRANCH}/{notebook_rel_path}"
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +83,7 @@ def show_landing() -> None:
               metriques (accuracy, ROC-AUC, matrice de confusion)
             """
         )
-        st.caption(f"Source : `students_ramen/app_raman_classification.py`")
+        st.caption("Source : `students_ramen/app_raman_classification.py`")
 
     with col2:
         st.subheader("🎯 Atelier YOLO")
@@ -84,66 +97,31 @@ def show_landing() -> None:
             - Metriques (IoU, precision, rappel, mAP) et inference
             """
         )
-        st.caption(f"Source : `students_yolo/app.py`")
+        st.caption("Source : `students_yolo/app.py`")
 
     st.markdown("---")
     st.info(
-        "ℹ️ Chaque atelier conserve ses propres donnees et son propre "
-        "environnement de travail. La barre laterale affiche les options "
-        "specifiques a l'atelier selectionne."
+        "ℹ️ Chaque atelier propose dans sa barre laterale un bouton pour "
+        "**ouvrir le notebook Jupyter associe dans Google Colab** "
+        "(execution gratuite en ligne, pas d'installation locale requise)."
     )
-
-
-# ---------------------------------------------------------------------------
-# Lancement d'un notebook Jupyter associe a l'atelier
-# ---------------------------------------------------------------------------
-def launch_notebook(notebook_path: Path) -> None:
-    """Ouvre le notebook dans une instance Jupyter Notebook locale.
-
-    Lance `jupyter notebook <notebook>` en sous-processus detache, dans le
-    dossier du notebook, ce qui ouvre une nouvelle fenetre/onglet de
-    navigateur sur l'URL Jupyter (port 8888 par defaut).
-    """
-    if not notebook_path.exists():
-        st.sidebar.error(f"Notebook introuvable : `{notebook_path.name}`")
-        return
-
-    if shutil.which("jupyter") is None:
-        st.sidebar.error(
-            "Commande `jupyter` introuvable dans l'environnement courant. "
-            "Verifiez que jupyter / notebook est installe."
-        )
-        return
-
-    try:
-        subprocess.Popen(
-            ["jupyter", "notebook", notebook_path.name],
-            cwd=str(notebook_path.parent),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        st.sidebar.success(
-            f"Notebook lance : `{notebook_path.name}`\n\n"
-            "Une nouvelle fenetre de navigateur va s'ouvrir "
-            "(http://localhost:8888)."
-        )
-    except OSError as exc:
-        st.sidebar.error(f"Echec du lancement de Jupyter : {exc}")
 
 
 # ---------------------------------------------------------------------------
 # Delegation vers un script Streamlit existant
 # ---------------------------------------------------------------------------
-def run_external_app(app_path: Path) -> None:
-    """Execute un script Streamlit existant dans son dossier d'origine.
+def run_external_app(app_path: Path, cwd: Path | None = None) -> None:
+    """Execute un script Streamlit existant en preservant son contexte.
 
-    - Change le repertoire courant pour que les chemins relatifs (par ex.
-      le dossier `Ramen/` du dataset Raman) soient correctement resolus.
+    - `cwd` : repertoire courant a utiliser pendant l'execution.
+      Pour l'app Raman, on utilise la racine du repo afin que les chemins
+      relatifs (par ex. `Ramen/`) soient resolus correctement.
     - Ajoute le dossier de l'app au `sys.path` pour les imports relatifs.
     - Neutralise temporairement `st.set_page_config` : un seul appel par
       run est autorise par Streamlit, on l'a deja fait au-dessus.
     """
     app_dir = app_path.parent
+    target_cwd = cwd if cwd is not None else app_dir
 
     original_set_page_config = st.set_page_config
     st.set_page_config = lambda *args, **kwargs: None  # type: ignore[assignment]
@@ -151,7 +129,7 @@ def run_external_app(app_path: Path) -> None:
     previous_cwd = os.getcwd()
     added_to_path = False
     try:
-        os.chdir(app_dir)
+        os.chdir(target_cwd)
         if str(app_dir) not in sys.path:
             sys.path.insert(0, str(app_dir))
             added_to_path = True
@@ -179,17 +157,37 @@ st.sidebar.markdown("---")
 
 if choice == "🏠 Accueil":
     show_landing()
+
 elif choice == "🔬 Atelier Raman":
-    if st.sidebar.button("📓 Ouvrir le notebook Raman", use_container_width=True):
-        launch_notebook(RAMAN_NOTEBOOK)
+    st.sidebar.link_button(
+        "📓 Ouvrir le notebook (Colab)",
+        colab_url(RAMAN_NOTEBOOK_REL),
+        use_container_width=True,
+    )
+    st.sidebar.link_button(
+        "👁️ Voir le notebook (GitHub)",
+        github_url(RAMAN_NOTEBOOK_REL),
+        use_container_width=True,
+    )
     st.sidebar.markdown("---")
     if not RAMAN_APP.exists():
         st.error(f"Fichier introuvable : `{RAMAN_APP}`")
     else:
-        run_external_app(RAMAN_APP)
+        # L'app Raman cherche `Ramen/` dans son CWD ; on la lance depuis la
+        # racine du repo ou ce dossier existe deja (cf. depot SummerSchoolIA).
+        run_external_app(RAMAN_APP, cwd=ROOT)
+
 else:  # YOLO
-    if st.sidebar.button("📓 Ouvrir le notebook YOLO", use_container_width=True):
-        launch_notebook(YOLO_NOTEBOOK)
+    st.sidebar.link_button(
+        "📓 Ouvrir le notebook (Colab)",
+        colab_url(YOLO_NOTEBOOK_REL),
+        use_container_width=True,
+    )
+    st.sidebar.link_button(
+        "👁️ Voir le notebook (GitHub)",
+        github_url(YOLO_NOTEBOOK_REL),
+        use_container_width=True,
+    )
     st.sidebar.markdown("---")
     if not YOLO_APP.exists():
         st.error(f"Fichier introuvable : `{YOLO_APP}`")
