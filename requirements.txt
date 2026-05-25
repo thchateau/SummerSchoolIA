@@ -10,4 +10,4 @@ notebook
 ipykernel
 ultralytics
 pillow
-opencv-python
+opencv-python-headless
