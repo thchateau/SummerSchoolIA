@@ -1,0 +1,8 @@
+ultralytics
+streamlit
+notebook
+pandas
+matplotlib
+pillow
+opencv-python
+numpy
